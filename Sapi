@@ -1,0 +1,549 @@
+--SACRED AHK VERSION 9.5 + SANGUINE Z-3 | open source / disfruten el codigo 
+-- Incluye Sanguine Z-3 FPS Drop integrado
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local mouse = player:GetMouse()
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Estado
+local SoruInfinitoEnabled = false
+local SoruAimbotEnabled = false
+local soruMaxDist = 2000
+local AimlockPlayerEnabled = false
+local AimlockNpcEnabled = false
+local SilentAimPlayersEnabled = false
+local SilentAimNPCsEnabled = false
+local PlayerWidgetActive = false
+local NpcWidgetActive = false
+local SelectedSoruTarget = "Nearest"
+local maxRange = 1000
+local PlayersPosition = nil
+local NPCPosition = nil
+
+-- Limpiar UIs antiguas
+for _, old in ipairs(playerGui:GetChildren()) do
+    if old.Name:match("SacredUI") then old:Destroy() end
+end
+
+-- ============================================================
+-- SANGUINE Z-3 FPS DROP (integrado)
+-- ============================================================
+local DROP_TO_FPS = 20
+local LAG_DURATION = 0.43
+local SANGUINE_ANIMATION_ID = "rbxassetid://15682737850" -- Foul Strike animation id
+
+local SanguineEnabled = false
+local lagBusy = false
+
+local function dropFPS()
+    if lagBusy or not SanguineEnabled then return end
+    lagBusy = true
+    local stop = tick() + LAG_DURATION
+    local interval = 1 / DROP_TO_FPS
+    local con
+    con = RunService.RenderStepped:Connect(function()
+        if tick() > stop then
+            if con then con:Disconnect() end
+            return
+        end
+        local now = tick()
+        while tick() - now < interval do end
+    end)
+    task.wait(0.10)
+    lagBusy = false
+end
+
+-- Watcher de animación Sanguine
+local function connectSanguineWatcher()
+    local char = player.Character or player.CharacterAdded:Wait()
+    local hum = char:WaitForChild("Humanoid")
+    if hum:FindFirstChild("__SACRED_SANGUINE") then
+        hum:FindFirstChild("__SACRED_SANGUINE"):Destroy()
+    end
+    local flag = Instance.new("BoolValue")
+    flag.Name = "__SACRED_SANGUINE"
+    flag.Parent = hum
+    hum.AnimationPlayed:Connect(function(anim)
+        if SanguineEnabled and tostring(anim.Animation.AnimationId):find(SANGUINE_ANIMATION_ID) then
+            dropFPS()
+        end
+    end)
+end
+
+player.CharacterAdded:Connect(function()
+    task.wait(1)
+    connectSanguineWatcher()
+end)
+if player.Character then connectSanguineWatcher() end
+
+-- ============================================================
+-- FAST ATTACK
+-- ============================================================
+local RegisterHit, RegisterAttack
+local FastAttackEnabled = false
+local FastAttackRange = 2000
+local FastAttackRunning = false
+
+spawn(function()
+    for _, v in pairs(ReplicatedStorage:GetDescendants()) do
+        if v:IsA("RemoteEvent") and v.Name == "RE/RegisterHit" then RegisterHit = v end
+        if v:IsA("RemoteEvent") and v.Name == "RE/RegisterAttack" then RegisterAttack = v end
+    end
+end)
+
+local function AttackMultipleTargets(targets)
+    if not RegisterHit or not RegisterAttack then return end
+    pcall(function()
+        if not targets or #targets == 0 then return end
+        local allTargets = {}
+        for _, char in pairs(targets) do
+            local head = char:FindFirstChild("Head")
+            if head then table.insert(allTargets, {char, head}) end
+        end
+        if #allTargets == 0 then return end
+        RegisterAttack:FireServer(0)
+        RegisterHit:FireServer(allTargets[1][2], allTargets)
+    end)
+end
+
+local function StartFastAttack()
+    if FastAttackRunning then return end
+    FastAttackRunning = true
+    spawn(function()
+        while FastAttackEnabled do
+            RunService.Stepped:Wait()
+            local myChar = player.Character
+            local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            if myHRP then
+                local targets = {}
+                for _, p in pairs(Players:GetPlayers()) do
+                    if p ~= player and p.Character then
+                        local hum = p.Character:FindFirstChild("Humanoid")
+                        local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                        if hum and hrp and hum.Health > 0 and (hrp.Position - myHRP.Position).Magnitude <= FastAttackRange then
+                            table.insert(targets, p.Character)
+                        end
+                    end
+                end
+                local enemies = workspace:FindFirstChild("Enemies")
+                if enemies then
+                    for _, npc in pairs(enemies:GetChildren()) do
+                        local hum = npc:FindFirstChild("Humanoid")
+                        local hrp = npc:FindFirstChild("HumanoidRootPart")
+                        if hum and hrp and hum.Health > 0 and (hrp.Position - myHRP.Position).Magnitude <= FastAttackRange then
+                            table.insert(targets, npc)
+                        end
+                    end
+                end
+                if #targets > 0 then AttackMultipleTargets(targets) end
+            end
+        end
+        FastAttackRunning = false
+    end)
+end
+
+-- ============================================================
+-- WALK SPEED
+-- ============================================================
+local WalkSpeedEnabled = false
+local WalkSpeedValue = 16
+
+spawn(function()
+    while true do
+        wait(0.05)
+        if WalkSpeedEnabled then
+            local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+            if hum and hum.WalkSpeed ~= WalkSpeedValue then hum.WalkSpeed = WalkSpeedValue end
+        end
+    end
+end)
+
+-- ============================================================
+-- DASH DISTANCE
+-- ============================================================
+local DashEnabled = false
+local DashLengthDist = 1
+local DashRunning = false
+
+local function startDashLoop()
+    if DashRunning then return end
+    DashRunning = true
+    spawn(function()
+        while DashEnabled do
+            wait(0.1)
+            pcall(function()
+                local char = player.Character
+                if char then
+                    if char:GetAttribute("DashLength") ~= DashLengthDist then char:SetAttribute("DashLength", DashLengthDist) end
+                    if char:GetAttribute("DashLengthAir") ~= DashLengthDist then char:SetAttribute("DashLengthAir", DashLengthDist) end
+                end
+            end)
+        end
+        DashRunning = false
+    end)
+end
+
+local function stopDashLoop()
+    DashEnabled = false
+    pcall(function()
+        local char = player.Character
+        if char then
+            char:SetAttribute("DashLength", 1)
+            char:SetAttribute("DashLengthAir", 1)
+        end
+    end)
+end
+
+-- ============================================================
+-- NOCLIP
+-- ============================================================
+local NoclipEnabled = false
+local NoclipConn = nil
+
+local function SetNoclip(state)
+    NoclipEnabled = state
+    if state then
+        NoclipConn = RunService.Stepped:Connect(function()
+            local char = player.Character
+            if char and NoclipEnabled then
+                for _, part in pairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then part.CanCollide = false end
+                end
+            end
+        end)
+    else
+        if NoclipConn then NoclipConn:Disconnect(); NoclipConn = nil end
+        local char = player.Character
+        if char then
+            for _, part in pairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = true end
+            end
+        end
+    end
+end
+
+player.CharacterAdded:Connect(function()
+    if NoclipEnabled then wait(0.5); SetNoclip(true) end
+end)
+
+-- ============================================================
+-- INFINITE JUMP
+-- ============================================================
+local InfiniteJumpEnabled = false
+
+UserInputService.JumpRequest:Connect(function()
+    if InfiniteJumpEnabled then
+        local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+
+-- ============================================================
+-- WALK ON WATER
+-- ============================================================
+local WalkOnWaterEnabled = false
+
+spawn(function()
+    local waterPart = Instance.new("Part")
+    waterPart.Size = Vector3.new(200, 1, 200)
+    waterPart.Transparency = 1
+    waterPart.Anchored = true
+    waterPart.CanCollide = false
+    waterPart.Name = "SacredWaterPlatform"
+    waterPart.Parent = workspace
+    while true do
+        wait(0.05)
+        local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if WalkOnWaterEnabled and hrp then
+            if hrp.Position.Y >= 9.5 then
+                waterPart.Position = Vector3.new(hrp.Position.X, 9.2, hrp.Position.Z)
+                waterPart.CanCollide = true
+            else
+                waterPart.CanCollide = false
+            end
+        else
+            waterPart.CanCollide = false
+        end
+    end
+end)
+
+-- ============================================================
+-- SMART AUTO V4
+-- ============================================================
+local SmartAutoV4Enabled = false
+
+spawn(function()
+    while true do
+        wait(1)
+        if SmartAutoV4Enabled then
+            pcall(function()
+                local char = player.Character
+                if char and char:GetAttribute("RaceEnergy") and char:GetAttribute("RaceEnergy") >= 100 then
+                    local awakening = player.Backpack:FindFirstChild("Awakening")
+                    if awakening and awakening:FindFirstChild("RemoteFunction") then
+                        awakening.RemoteFunction:InvokeServer(true)
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+-- ============================================================
+-- ESP
+-- ============================================================
+local ESPEnabled = false
+local ESPObjects = {}
+
+local function CreateESP(target)
+    if not target:FindFirstChild("Head") then return end
+    local existing = target.Head:FindFirstChild("SacredESP")
+    if existing then existing:Destroy() end
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "SacredESP"
+    billboard.Adornee = target.Head
+    billboard.Size = UDim2.new(0, 100, 0, 50)
+    billboard.StudsOffset = Vector3.new(0, 2, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = target.Head
+    local label = Instance.new("TextLabel", billboard)
+    label.BackgroundTransparency = 1
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.Text = target.Name
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 14
+    label.TextColor3 = Color3.new(0, 1, 1)
+    label.TextStrokeTransparency = 0
+    table.insert(ESPObjects, billboard)
+end
+
+local function ClearESP()
+    for _, obj in pairs(ESPObjects) do
+        if obj and obj.Parent then obj:Destroy() end
+    end
+    ESPObjects = {}
+end
+
+local function UpdateESP()
+    ClearESP()
+    if not ESPEnabled then return end
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= player and p.Character then CreateESP(p.Character) end
+    end
+    local enemies = workspace:FindFirstChild("Enemies")
+    if enemies then
+        for _, npc in pairs(enemies:GetChildren()) do CreateESP(npc) end
+    end
+end
+
+spawn(function()
+    while true do
+        wait(5)
+        if ESPEnabled then UpdateESP() end
+    end
+end)
+
+-- ============================================================
+-- SORU INFINITO
+-- ============================================================
+local function enforceSoru(char)
+    if not char then return end
+    if SoruInfinitoEnabled then char:SetAttribute("FlashstepCooldown", 1) end
+    char.AttributeChanged:Connect(function(attr)
+        if attr == "FlashstepCooldown" and SoruInfinitoEnabled and char:GetAttribute("FlashstepCooldown") ~= 1 then
+            char:SetAttribute("FlashstepCooldown", 1)
+        end
+    end)
+end
+
+player.CharacterAdded:Connect(enforceSoru)
+if player.Character then enforceSoru(player.Character) end
+
+spawn(function()
+    while true do
+        wait(0.5)
+        if SoruInfinitoEnabled and player.Character then
+            pcall(function() player.Character:SetAttribute("FlashstepCooldown", 1) end)
+        end
+    end
+end)
+
+-- ============================================================
+-- TARGET HELPERS
+-- ============================================================
+local function getClosestPlayer()
+    local myHrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if not myHrp then return nil end
+    local closest, closestDist = nil, math.huge
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local hum = p.Character:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then
+                local dist = (p.Character.HumanoidRootPart.Position - myHrp.Position).Magnitude
+                if dist < closestDist and dist < maxRange then
+                    closestDist = dist
+                    closest = p.Character
+                end
+            end
+        end
+    end
+    return closest
+end
+
+local function getClosestNPC()
+    local myHrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if not myHrp then return nil end
+    local container = workspace:FindFirstChild("Enemies") or workspace
+    local closest, closestDist = nil, math.huge
+    for _, npc in pairs(container:GetChildren()) do
+        if npc:IsA("Model") and npc:FindFirstChild("HumanoidRootPart") and not Players:GetPlayerFromCharacter(npc) then
+            local hum = npc:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then
+                local dist = (npc.HumanoidRootPart.Position - myHrp.Position).Magnitude
+                if dist < closestDist and dist < maxRange then
+                    closestDist = dist
+                    closest = npc
+                end
+            end
+        end
+    end
+    return closest
+end
+
+-- ============================================================
+-- AIMLOCK + SILENT AIM POSITIONS (RenderStepped)
+-- ============================================================
+RunService.RenderStepped:Connect(function()
+    PlayersPosition = SilentAimPlayersEnabled and (getClosestPlayer() and getClosestPlayer().HumanoidRootPart.Position) or nil
+    NPCPosition = SilentAimNPCsEnabled and (getClosestNPC() and getClosestNPC().HumanoidRootPart.Position) or nil
+
+    if PlayerWidgetActive and AimlockPlayerEnabled then
+        local t = getClosestPlayer()
+        if t and t:FindFirstChild("HumanoidRootPart") then
+            camera.CFrame = CFrame.new(camera.CFrame.Position, t.HumanoidRootPart.Position)
+        end
+    end
+    if NpcWidgetActive and AimlockNpcEnabled then
+        local t = getClosestNPC()
+        if t and t:FindFirstChild("HumanoidRootPart") then
+            camera.CFrame = CFrame.new(camera.CFrame.Position, t.HumanoidRootPart.Position)
+        end
+    end
+end)
+
+-- ============================================================
+-- METAMETHODS (Silent Aim + Soru Aimbot) con protección
+-- ============================================================
+local ok, mt = pcall(getrawmetatable, game)
+if ok and mt then
+    local oldIndex = mt.__index
+    local oldNamecall = mt.__namecall
+    local function isCaller()
+        if checkcaller then return checkcaller() end
+        return false
+    end
+    local success, _ = pcall(setreadonly, mt, false)
+    if success then
+        mt.__index = function(self, key)
+            if not isCaller() and self == mouse and (key == "Hit" or key == "Target") then
+                if SoruAimbotEnabled then
+                    local targetName = SelectedSoruTarget
+                    if targetName == "Nearest" then
+                        local cl = getClosestPlayer()
+                        local p = cl and Players:GetPlayerFromCharacter(cl)
+                        targetName = p and p.Name or nil
+                    end
+                    if targetName then
+                        local tObj = Players:FindFirstChild(targetName)
+                        local eHRP = tObj and tObj.Character and tObj.Character:FindFirstChild("HumanoidRootPart")
+                        if eHRP then
+                            local myHRP = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+                            if myHRP and (myHRP.Position - eHRP.Position).Magnitude <= soruMaxDist then
+                                if key == "Hit" then return CFrame.new(eHRP.Position) end
+                                if key == "Target" then return eHRP end
+                            end
+                        end
+                    end
+                end
+                if SilentAimPlayersEnabled or SilentAimNPCsEnabled then
+                    local activePos = PlayersPosition or NPCPosition
+                    if activePos then
+                        if key == "Hit" then return CFrame.new(activePos) end
+                        if key == "Target" then return workspace:FindFirstChild("HumanoidRootPart") end
+                    end
+                end
+            end
+            return oldIndex(self, key)
+        end
+
+        mt.__namecall = function(self, ...)
+            local args = {...}
+            local method = getnamecallmethod():lower()
+            if not isCaller() and (method == "fireserver" or method == "invokeserver") then
+                local activePos = PlayersPosition or NPCPosition
+                if activePos then
+                    for i, arg in ipairs(args) do
+                        if typeof(arg) == "Vector3" then args[i] = activePos
+                        elseif typeof(arg) == "CFrame" then args[i] = CFrame.new(activePos)
+                        end
+                    end
+                    return oldNamecall(self, unpack(args))
+                end
+            end
+            return oldNamecall(self, ...)
+        end
+        pcall(setreadonly, mt, true)
+    end
+end
+
+-- ============================================================
+-- INTERFAZ VISUAL
+-- ============================================================
+local THEMES = {
+    ["Neon Purple"] = Color3.fromRGB(170, 0, 255),
+    ["Electric Blue"] = Color3.fromRGB(0, 150, 255),
+    ["Crimson Red"] = Color3.fromRGB(255, 0, 50),
+    ["Toxic Green"] = Color3.fromRGB(0, 255, 100),
+}
+local currentThemeColor = THEMES["Neon Purple"]
+local COLORS = {
+    Background = Color3.fromRGB(10, 8, 14),
+    PanelBG = Color3.fromRGB(16, 12, 22),
+    TextWhite = Color3.fromRGB(255, 255, 255),
+    TextGray = Color3.fromRGB(140, 140, 145),
+    ToggleOff = Color3.fromRGB(26, 20, 32),
+}
+local themeStrokes, themeTexts, themeFrames = {}, {}, {}
+
+-- GUIs
+local screenGui = Instance.new("ScreenGui", playerGui)
+screenGui.Name = "SacredUI_UltimateUI"
+screenGui.ResetOnSpawn = false
+
+local toggleIconGui = Instance.new("ScreenGui", playerGui)
+toggleIconGui.Name = "SacredUI_ToggleIcon"
+toggleIconGui.ResetOnSpawn = false
+
+local playerWidgetGui = Instance.new("ScreenGui", playerGui)
+playerWidgetGui.Name = "SacredUI_PlayerWidget"
+playerWidgetGui.ResetOnSpawn = false
+
+local npcWidgetGui = Instance.new("ScreenGui", playerGui)
+npcWidgetGui.Name = "SacredUI_NpcWidget"
+npcWidgetGui.ResetOnSpawn = false
+
+-- Widgets flotantes
+local function makeWidget(parent, pos)
+    local btn = Instance.new("TextButton", parent)
+    btn.Size = UDim2.new(0, 115, 0, 36)
+    btn.Position = pos
+    btn.BackgroundColor3 = COLORS.ToggleOff
+    btn.Font = Enum.Font.GothamBold
+    btn.TextC
