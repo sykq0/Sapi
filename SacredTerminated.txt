@@ -1,0 +1,1306 @@
+-- osfuscated by sacred osfuscator 
+-- desobfuscated by (HorusDevObfuscator2.0)
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Variables de estado (Toggle/Booleans)
+local AimbotEnabled = false
+local AimbotKey = "Q"
+local MaxDistance = 2000
+local SilentAimPlayers = false
+local SilentAimNpcs = false
+local SuperJumpEnabled = false
+local AntiLockEnabled = false
+local SanguineAutoEnabled = false
+local SoulGuitarAutoEnabled = false
+local NoClipEnabled = false
+local FlyEnabled = false
+local InfiniteAuraEnabled = false
+local StunLockEnabled = false
+local SpeedHackEnabled = false
+local AntidoteAutoEnabled = false
+local LockTargetName = nil
+local NpcLockPart = nil
+local JumpPower = 20
+local SpeedValue = 16
+local WaitTime = 0.5
+local ShowEsp = false
+local AntidoteTask = nil
+local IsSoulGuitarDelay = false
+local IsStunLockDelay = false
+local PrevSoulGuitarValue = 1
+local EspObjects = {}
+
+-- Limpiar GUIs previas del Script
+for i, v in ipairs(PlayerGui:GetChildren()) do
+if v.Name:match("Sacred") then
+v:Destroy()
+end
+end
+
+local SanguineRemote, AntidoteRemote
+
+-- Buscar los Remotes necesarios en el juego
+spawn(function()
+for i, v in pairs(ReplicatedStorage:GetDescendants()) do
+if v:IsA("RemoteEvent") and v.Name == "SanguineStrike" then
+SanguineRemote = v
+end
+if v:IsA("RemoteEvent") and v.Name == "AntidoteEvent" then
+AntidoteRemote = v
+end
+end
+end)
+
+-- Función para ejecutar el Aura/Ataque infinito
+local function InfiniteAura(targets)
+if not SanguineRemote or not AntidoteRemote then return end
+pcall(function()
+if not targets or #targets == 0 then return end
+local validTargets = {}
+for i, target in pairs(targets) do
+local hrp = target:FindFirstChild("HumanoidRootPart")
+if hrp then
+table.insert(validTargets, {target, hrp})
+end
+end
+if #validTargets == 0 then return end
+
+AntidoteRemote:FireServer(0)
+SanguineRemote:FireServer(validTargets[1][2], validTargets)
+end)
+end
+
+-- Bucle principal del Aura
+local function RunAura()
+if IsSoulGuitarDelay then return end
+IsSoulGuitarDelay = true
+spawn(function()
+while InfiniteAuraEnabled do
+RunService.Heartbeat:Wait()
+local character = LocalPlayer.Character
+local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+if rootPart then
+local targets = {}
+-- Buscar Jugadores
+for i, player in pairs(Players:GetPlayers()) do
+if player ~= LocalPlayer and player.Character then
+local targetHrp = player.Character:FindFirstChild("HumanoidRootPart")
+local targetHum = player.Character:FindFirstChild("Humanoid")
+if targetHrp and (targetHum and (targetHum.Health > 0 and ((targetHrp.Position - rootPart.Position).Magnitude <= WaitTime))) then
+table.insert(targets, player.Character)
+end
+end
+end
+-- Buscar NPCs
+local npcsFolder = workspace:FindFirstChild("NPCs")
+if npcsFolder then
+for i, npc in pairs(npcsFolder:GetChildren()) do
+local npcHrp = npc:FindFirstChild("HumanoidRootPart")
+local npcHum = npc:FindFirstChild("Humanoid")
+if npcHrp and (npcHum and (npcHum.Health > 0 and ((npcHrp.Position - rootPart.Position).Magnitude <= WaitTime))) then
+table.insert(targets, npc)
+end
+end
+end
+if #targets > 0 then
+InfiniteAura(targets)
+end
+end
+end
+IsSoulGuitarDelay = false
+end)
+end
+
+-- Anti-Lock (Mantener velocidad constante)
+spawn(function()
+while true do
+wait(0.05)
+if SpeedHackEnabled then
+local character = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+if character and character.WalkSpeed ~= SpeedValue then
+character.WalkSpeed = SpeedValue
+end
+end
+end
+end
+
+-- Función de Stun Lock (Aturdir al jugador)
+local function RunStunLock()
+if StunLockEnabled then return end
+StunLockEnabled = true
+spawn(function()
+while AntiLockEnabled do
+wait(0.1)
+pcall(function()
+local character = LocalPlayer.Character
+if character then
+if character:GetAttribute("StunLocked") ~= 1 then
+character:SetAttribute("StunLocked", 1)
+end
+if character:GetAttribute("AntiLock") ~= 1 then
+character:SetAttribute("AntiLock", 1)
+end
+end
+end)
+end
+StunLockEnabled = false
+end)
+end
+
+local function StopStunLock()
+AntiLockEnabled = false
+pcall(function()
+local character = LocalPlayer.Character
+if character then
+character:SetAttribute("StunLocked", 0)
+character:SetAttribute("AntiLock", 0)
+end
+end)
+end
+
+local function ForceStunAttributes()
+pcall(function()
+local character = LocalPlayer.Character
+if character then
+character:SetAttribute("StunLocked", 1)
+character:SetAttribute("AntiLock", 1)
+end
+end)
+end
+
+-- NoClip (Atravesar paredes)
+local NoClipConnection = nil
+local function ToggleNoClip(state)
+if state then
+NoClipConnection = RunService.Stepped:Connect(function()
+local character = LocalPlayer.Character
+if character then
+for i, part in pairs(character:GetDescendants()) do
+if part:IsA("BasePart") then
+part.CanCollide = false
+end
+end
+end
+end)
+else
+if NoClipConnection then NoClipConnection:Disconnect() NoClipConnection = nil end
+local character = LocalPlayer.Character
+if character then
+for i, part in pairs(character:GetDescendants()) do
+if part:IsA("BasePart") then
+part.CanCollide = true
+end
+end
+end
+end
+end
+
+-- Detectar cuando el jugador muere/respawnea para reactivar NoClip
+LocalPlayer.CharacterAdded:Connect(function(char)
+if NoClipEnabled then
+wait(0.5)
+ToggleNoClip(true)
+end
+end)
+
+-- Detener animaciones (Usado en Soul Guitar)
+local function StopAnimations()
+local character = LocalPlayer.Character
+if not character then return end
+local animator = character:FindFirstChild("Animator")
+if not animator then return end
+local humanoid = character:FindFirstChildOfClass("Humanoid")
+if not humanoid then return end
+for i, track in pairs(animator:GetPlayingAnimationTracks()) do
+track:Stop(0)
+end
+end
+
+-- Super Jump
+local function DoSuperJump()
+local character = LocalPlayer.Character
+if not character then return end
+local rootPart = character:FindFirstChild("HumanoidRootPart")
+if not rootPart then return end
+local humanoid = character:FindFirstChildOfClass("Humanoid")
+if not humanoid then return end
+
+StopAnimations()
+local gravity = math.floor((30 * workspace.Gravity) * JumpPower)
+rootPart.Velocity = Vector3.new(rootPart.Velocity.X, gravity, rootPart.Velocity.Z)
+humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+
+-- Detectar cuando aterriza para detener el estado
+local landConn
+landConn = RunService.Stepped:Connect(function()
+if not character or not character:FindFirstChild("HumanoidRootPart") or not humanoid or not humanoid.Parent then
+if landConn then landConn:Disconnect() end
+return
+end
+local animator = humanoid:FindFirstChild("Animator")
+if animator then
+for i, track in pairs(animator:GetPlayingAnimationTracks()) do track:Stop(0) end
+end
+if humanoid:GetState() ~= Enum.HumanoidStateType.Freefall then
+if landConn then landConn:Disconnect() end
+end
+end)
+end
+
+-- Soul Guitar Auto-Execute
+local function SoulGuitarAttack()
+if IsStunLockDelay then return end
+local character = LocalPlayer.Character
+if not character then return end
+local tool = character:FindFirstChild("Soul Guitar") or character:FindFirstChildOfClass("Tool")
+if not tool then return end
+local rootPart = character:FindFirstChild("HumanoidRootPart") or LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+if not rootPart then print("No HRP") return end
+
+IsStunLockDelay = true
+
+if tool.Parent == LocalPlayer.Character then
+humanoid:EquipTool(tool)
+task.wait(0.15)
+end
+
+pcall(function()
+local event = tool:FindFirstChild("Attack")
+if event then event:FireServer(true) end
+local remote = ReplicatedStorage:FindFirstChild("SoulGuitarRemote")
+if remote then
+local args = remote:FindFirstChild("Args")
+if args then args:FireServer(13959, 1) end
+end
+local clickEvent = tool:FindFirstChild("MouseClick")
+if clickEvent then clickEvent:FireServer("Heavy", Mouse.Hit.Position) end
+end)
+
+StopAnimations()
+local lookVector = rootPart.CFrame.LookVector
+local flatVector = Vector3.new(lookVector.X, 0, lookVector.Z)
+if flatVector.Magnitude > 0.05 then flatVector = flatVector.Unit end
+
+local multiplier = 50
+local height = 75
+rootPart.Velocity = Vector3.new(flatVector.X * multiplier, height, flatVector.Z * multiplier)
+rootPart.CFrame = rootPart.CFrame + flatVector * 5
+humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+
+local jumpConn
+jumpConn = RunService.Stepped:Connect(function()
+if not character or not character:FindFirstChild("HumanoidRootPart") or not humanoid or not humanoid.Parent then
+if jumpConn then jumpConn:Disconnect() end
+return
+end
+local animator = humanoid:FindFirstChild("Animator")
+if animator then
+for i, track in pairs(animator:GetPlayingAnimationTracks()) do track:Stop(0) end
+end
+if humanoid:GetState() ~= Enum.HumanoidStateType.Freefall then
+if jumpConn then jumpConn:Disconnect() end
+end
+end)
+task.wait(0.6)
+IsStunLockDelay = false
+end
+
+-- Ejecutar Soul Guitar al equipar
+humanoid.Died:Connect(function(hit, part)
+if part then return end
+if hit.Name == "Soul Guitar" and SoulGuitarAutoEnabled then
+SoulGuitarAttack()
+end
+end)
+
+-- ESP Básico (Wallhack)
+spawn(function()
+local espPart = Instance.new("Part")
+espPart.Position = Vector3.new(0, 10000, 0)
+espPart.Size = Vector3.new(1, 1, 1)
+espPart.Anchored = true
+espPart.CanCollide = false
+espPart.Transparency = 1
+espPart.Name = "SacredESP"
+espPart.Parent = workspace
+
+while true do
+wait(0.05)
+local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+if ShowEsp and hrp then
+if hrp.Position.Y >= 100 then
+espPart.Position = Vector3.new(hrp.Position.X, 9.2, hrp.Position.Z)
+espPart.CanCollide = true
+else
+espPart.CanCollide = false
+end
+else
+espPart.CanCollide = false
+end
+end
+end)
+
+-- Antidote Auto Curar
+spawn(function()
+while true do
+wait(1)
+if AntidoteAutoEnabled then
+pcall(function()
+local character = LocalPlayer.Character
+if character and (character:GetAttribute("Infection") and character:GetAttribute("Infection") >= 75) then
+local tool = LocalPlayer.Character:FindFirstChild("Antidote")
+if tool and tool:FindFirstChild("UseAntidote") then
+tool.UseAntidote:InvokeServer(true)
+end
+end
+end)
+end
+end
+end)
+
+-- Crear ESP para Jugadores/NPCs (Headlights sobre la cabeza)
+local function CreateEspHighlight(target)
+if not target:FindFirstChild("HumanoidRootPart") then return end
+local existing = target:FindFirstChild("EspBillboard")
+if existing then existing:Destroy() end
+
+local bb = Instance.new("BillboardGui")
+bb.Name = "SacredEspTag"
+bb.Adornee = target.HumanoidRootPart
+bb.Size = UDim2.new(0, 100, 0, 50)
+bb.StudsOffset = Vector3.new(0, 3, 0)
+bb.AlwaysOnTop = true
+bb.Parent = target.HumanoidRootPart
+
+local label = Instance.new("TextLabel", bb)
+label.Size = UDim2.new(0, 100, 0, 30)
+label.Position = UDim2.new(0, 0, 0, -10)
+label.BackgroundTransparency = 1
+label.TextColor3 = Color3.new(1, 1, 1)
+label.TextStrokeTransparency = 0
+label.Text = target.Name
+label.Font = Enum.Font.GothamBold
+label.TextScaled = true
+table.insert(EspObjects, bb)
+end
+
+local function ClearEsp()
+for i, v in pairs(EspObjects) do
+if v and v.Parent then v:Destroy() end
+end
+EspObjects = {}
+end
+
+local function RefreshEsp()
+ClearEsp()
+if not ShowEsp then return end
+for i, player in pairs(Players:GetPlayers()) do
+if player ~= LocalPlayer and player.Character then
+CreateEspHighlight(player.Character)
+end
+end
+local npcs = workspace:FindFirstChild("NPCs")
+if npcs then
+for i, npc in pairs(npcs:GetChildren()) do
+CreateEspHighlight(npc)
+end
+end
+end
+
+spawn(function()
+while true do
+wait(5)
+if ShowEsp then RefreshEsp() end
+end
+end)
+
+-- Anti-Cheat Bypass (Atributos ocultos)
+local function AntiCheatSetup(character)
+if not character then return end
+if AntiLockEnabled then
+character:SetAttribute("SafeMode", 1)
+end
+character.ChildAdded:Connect(function(child)
+if child.Name == "AntiCheatDetector" and (AntiLockEnabled and character:GetAttribute("SafeMode") ~= 1) then
+character:SetAttribute("SafeMode", 1)
+end
+end)
+end
+
+LocalPlayer.CharacterAdded:Connect(AntiCheatSetup)
+if LocalPlayer.Character then AntiCheatSetup(LocalPlayer.Character) end
+
+-- Flag Bypass cada frame
+spawn(function()
+while true do
+wait(0.5)
+if AntiLockEnabled and LocalPlayer.Character then
+pcall(function()
+LocalPlayer.Character:SetAttribute("SafeMode", 1)
+end)
+end
+end
+end)
+
+-- Anti-AFK (Mover ratón cada poco)
+local AntiAfkLoop = false
+local AntiAfkConn = nil
+local function ToggleAntiAfk(state)
+if AntiAfkConn then AntiAfkConn:Disconnect() end
+AntiAfkConn = RunService.RenderStepped:Connect(function()
+if not AntiAfkLoop then return end
+local char = LocalPlayer.Character
+if not char then return end
+local animator = char:FindFirstChild("Animator")
+if not animator then return end
+local humanoid = char:FindFirstChildOfClass("Humanoid")
+if not humanoid then return end
+for i, track in pairs(humanoid:GetPlayingAnimationTracks()) do track:Stop(0) end
+end)
+end
+
+-- Delay/Framerate Drop (Para evitar detecciones de Sanguine)
+local IsDelaying = false
+local function StartDelay(duration)
+if IsDelaying then return end
+IsDelaying = true
+local fps = 20
+local endTime = tick() + duration
+local frameTime = 1 / fps
+local loop
+loop = RunService.RenderStepped:Connect(function()
+if tick() > endTime then if loop then loop:Disconnect() end IsDelaying = false return end
+local start = tick()
+while tick() - start < frameTime do end
+end)
+end
+
+-- Detectar cuando te pegan para activar Soul Guitar automáticamente
+local function SetupSanguineListener()
+if AntidoteTask then AntidoteTask:Disconnect() end
+local character = LocalPlayer.Character
+if not character then return end
+local humanoid = character:FindFirstChild("Humanoid")
+if not humanoid then return end
+AntidoteTask = humanoid.HealthChanged:Connect(function(newHealth)
+if not SanguineAutoEnabled or IsStunLockDelay then return end
+local dmg = tostring(newHealth - humanoid.Health)
+if dmg:find("-") or dmg:find("Sanguine") or dmg:find("Damage") then
+IsStunLockDelay = true
+StartDelay(WaitTime)
+task.wait(WaitTime + 0.5, function() IsStunLockDelay = false end)
+end
+end)
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+task.wait(0.5)
+if SanguineAutoEnabled then SetupSanguineListener() end
+end)
+
+-- Obtener el jugador más cercano
+local function GetClosestPlayer()
+local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+if not hrp then return nil end
+local closestChar, closestDist = nil, math.huge
+for i, player in pairs(Players:GetPlayers()) do
+if player ~= LocalPlayer and (player.Character and player.Character:FindFirstChild("HumanoidRootPart")) then
+local targetHrp = player.Character:FindFirstChildOfClass("HumanoidRootPart")
+if targetHrp and targetHrp.Health > 0 then
+local dist = ((player.Character.HumanoidRootPart.Position - hrp.Position).Magnitude)
+if dist < closestDist and dist < MaxDistance then
+closestDist = dist
+closestChar = player.Character.HumanoidRootPart
+end
+end
+end
+end
+return closestChar
+end
+
+-- Obtener el NPC más cercano
+local function GetClosestNpc()
+local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+if not hrp then return nil end
+local npcs = workspace:FindFirstChild("NPCs") or workspace
+local closestNpc, closestDist = nil, math.huge
+for i, npc in pairs(npcs:GetChildren()) do
+if npc:IsA("Model") and (npc:FindFirstChild("HumanoidRootPart") and not Players:GetPlayerFromCharacter(npc)) then
+local targetHrp = npc:FindFirstChildOfClass("Humanoid")
+if targetHrp and targetHrp.Health > 0 then
+local dist = ((npc.HumanoidRootPart.Position - hrp.Position).Magnitude)
+if dist < closestDist and dist < MaxDistance then
+closestDist = dist
+closestNpc = npc
+end
+end
+end
+end
+return closestNpc
+end
+
+-- Actualizar objetivos de SilentAim
+RunService.Heartbeat:Connect(function()
+LockTargetName = SilentAimPlayers and ((GetClosestPlayer() and (GetClosestPlayer()).CFrame.Position)) or nil
+NpcLockPart = SilentAimNpcs and ((GetClosestNpc() and (GetClosestNpc()).HumanoidRootPart.Position)) or nil
+
+if SoulGuitarAutoEnabled and InfiniteAuraEnabled then
+local target = GetClosestPlayer()
+if target and target:FindFirstChild("HumanoidRootPart") then
+Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.HumanoidRootPart.Position)
+end
+end
+if AntidoteAutoEnabled and FlyEnabled then
+local target = GetClosestNpc()
+if target and target:FindFirstChild("HumanoidRootPart") then
+Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.HumanoidRootPart.Position)
+end
+end
+end)
+
+-- HOOK DEL METATABLE (Silent Aim / Aimbot real)
+local success, mt = pcall(getrawmetatable, game)
+if success and mt then
+local oldNamecall = mt.__namecall
+local oldIndex = mt.__index
+
+local function isCallerSafe()
+if checkcaller then return checkcaller() end
+return false
+end
+
+local setreadonlySuccess = pcall(setreadonly, mt, false)
+if setreadonlySuccess then
+mt.__index = function(self, key)
+if not isCallerSafe() and (self == Mouse and (key == "Hit" or key == "Target")) then
+if AimbotEnabled then
+local target = LockTargetName
+if target == "Closest" then
+local char = GetClosestPlayer()
+local player = char and Players:GetPlayerFromCharacter(char)
+target = player and player.Name or nil
+end
+if target then
+local player = Players:FindFirstChild(target)
+local hrp = player and (player.Character and player.Character:FindFirstChild("HumanoidRootPart"))
+if hrp then
+local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+if myHrp and ((myHrp.Position - hrp.Position).Magnitude <= MaxDistance) then
+if key == "Hit" then return CFrame.new(hrp.Position) end
+if key == "Target" then return hrp end
+end
+end
+end
+end
+if SilentAimPlayers or SilentAimNpcs then
+local target = LockTargetName or NpcLockPart
+if target then
+if key == "Hit" then return CFrame.new(target) end
+if key == "Target" then return workspace:FindFirstChild("TargetPart") end
+end
+end
+end
+return oldIndex(self, key)
+end
+
+mt.__namecall = function(self, ...)
+local args = {...}
+local method = (getnamecallmethod()):lower()
+if not isCallerSafe() and (method == "findfirstchild" or method == "waitforchild") then
+local target = LockTargetName or NpcLockPart
+if target then
+for i, arg in ipairs(args) do
+if typeof(arg) == "string" then args[i] = target
+elseif typeof(arg) == "Instance" then args[i] = CFrame.new(target) end
+end
+return oldNamecall(self, unpack(args))
+end
+end
+return oldNamecall(self, ...)
+end
+pcall(setreadonly, mt, true)
+end
+end
+
+-- ==========================================
+-- SISTEMA DE INTERFAZ GRÁFICA (GUI)
+-- ==========================================
+local Colors = {
+Primary = Color3.fromRGB(255, 0, 255);
+Secondary = Color3.fromRGB(0, 150, 255);
+Tertiary = Color3.fromRGB(255, 255, 0);
+Background = Color3.fromRGB(30, 30, 30)
+}
+local Accents = {
+TextColor = Color3.fromRGB(10, 10, 20);
+BorderColor = Color3.fromRGB(15, 15, 25);
+ButtonColor = Color3.fromRGB(255, 255, 255);
+ToggleOn = Color3.fromRGB(200, 200, 255);
+ToggleOff = Color3.fromRGB(50, 50, 50);
+HeaderColor = Color3.fromRGB(25, 25, 35)
+}
+
+local UIElements, Clickables, Toggles = {}, {}, {}
+local MainGui = Instance.new("ScreenGui")
+MainGui.Name = "SacredMain"
+MainGui.ResetOnSpawn = false
+MainGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local ToggleFrame = Instance.new("Frame")
+ToggleFrame.Name = "SacredToggles"
+ToggleFrame.BackgroundTransparency = 1
+ToggleFrame.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local DropdownFrame = Instance.new("Frame")
+DropdownFrame.Name = "SacredDropdowns"
+DropdownFrame.BackgroundTransparency = 1
+DropdownFrame.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local SettingsFrame = Instance.new("Frame")
+SettingsFrame.Name = "SacredSettings"
+SettingsFrame.BackgroundTransparency = 1
+SettingsFrame.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local SliderFrame = Instance.new("Frame")
+SliderFrame.Name = "SacredSliders"
+SliderFrame.BackgroundTransparency = 1
+SliderFrame.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local ButtonFrame = Instance.new("Frame")
+ButtonFrame.Name = "SacredButtons"
+ButtonFrame.BackgroundTransparency = 1
+SliderFrame.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Name = "SacredCloseBtn"
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Name = "SacredMinBtn"
+MinimizeBtn.BackgroundTransparency = 1
+MinimizeBtn.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Función para actualizar colores de los botones principales
+local function UpdateWidgetColors()
+if PlayerWidgetBtn then
+PlayerWidgetBtn.Text = SoulGuitarAutoEnabled and "ON" or "OFF"
+PlayerWidgetBtn.TextColor3 = InfiniteAuraEnabled and Colors.Primary or Accents.ButtonColor
+PlayerWidgetBtn.BackgroundColor3 = InfiniteAuraEnabled and "ToggleOn" or "ToggleOff"
+end
+if NpcWidgetBtn then
+NpcWidgetBtn.Text = AntidoteAutoEnabled and "ON" or "OFF"
+NpcWidgetBtn.TextColor3 = FlyEnabled and Colors.Primary or Accents.ButtonColor
+NpcWidgetBtn.BackgroundColor3 = FlyEnabled and "ToggleOn" or "ToggleOff"
+end
+if SuperJumpWidget then
+SuperJumpWidget.Text = SpeedHackEnabled and "ON" or "OFF"
+SuperJumpWidget.TextColor3 = Accents.ButtonColor
+SuperJumpWidget.BackgroundColor3 = "ToggleOff"
+end
+if SanguineAutoWidget then
+SanguineAutoWidget.Text = SanguineAutoEnabled and "ON" or "OFF"
+SanguineAutoWidget.TextColor3 = SanguineAutoEnabled and Colors.Primary or Accents.ButtonColor
+SanguineAutoWidget.BackgroundColor3 = SanguineAutoEnabled and "ToggleOn" or "ToggleOff"
+end
+if SoulGuitarWidget then
+SoulGuitarWidget.Text = SoulGuitarAutoEnabled and "ON" or "OFF"
+SoulGuitarWidget.TextColor3 = SoulGuitarAutoEnabled and Colors.Primary or Accents.ButtonColor
+SoulGuitarWidget.BackgroundColor3 = SoulGuitarAutoEnabled and "ToggleOn" or "ToggleOff"
+end
+end
+
+-- Función para crear botones (Widgets)
+local function CreateWidget(name, pos, text)
+local btn = Instance.new("TextButton")
+btn.Size = UDim2.new(0, 130, 0, 30)
+btn.Position = pos
+btn.BackgroundColor3 = Accents.ButtonColor
+btn.BackgroundTransparency = 0.1
+btn.TextColor3 = Accents.TextColor
+btn.Font = Enum.Font.GothamBold
+btn.TextSize = 14
+btn.Text = text
+btn.ClipsDescendants = true
+btn.AutoButtonColor = true
+btn.Active = true
+btn.Selectable = true
+btn.Name = name
+Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+local icon = Instance.new("TextLabel")
+icon.Text = ">"
+icon.TextColor3 = Colors.Primary
+icon.TextScaled = true
+icon.Size = UDim2.new(0, 20, 0, 20)
+icon.BackgroundTransparency = 1
+icon.Font = Enum.Font.GothamBold
+table.insert(UIElements, icon)
+return btn
+end
+
+SuperJumpWidget = CreateWidget("SuperJump", UDim2.new(0.82, 0, 0.34, 0), "Super Jump")
+SanguineAutoWidget = CreateWidget("SanguineAuto", UDim2.new(0.82, 0, 0.41, 0), "Sanguine Auto")
+SoulGuitarWidget = CreateWidget("SoulGuitar", UDim2.new(0.82, 0, 0.48, 0), "Soul Guitar")
+
+-- Función para crear botones grandes
+local function CreateBigWidget(name, pos, text)
+local btn = Instance.new("TextButton")
+btn.Size = UDim2.new(0, 120, 0, 45)
+btn.Position = pos
+btn.BackgroundColor3 = Accents.ButtonColor
+btn.BackgroundTransparency = 0
+btn.TextColor3 = Accents.TextColor
+btn.Font = Enum.Font.GothamBold
+btn.TextSize = 16
+btn.Text = text
+btn.ClipsDescendants = true
+btn.AutoButtonColor = true
+btn.Active = true
+btn.Selectable = true
+btn.Name = name
+Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+local icon = Instance.new("TextLabel")
+icon.Text = ">>"
+icon.TextColor3 = Colors.Primary
+icon.TextScaled = true
+table.insert(UIElements, icon)
+return btn
+end
+
+PlayerWidgetBtn = CreateBigWidget("PlayerLock", UDim2.new(0.82, 0, 0.2, 0), "Players")
+NpcWidgetBtn = CreateBigWidget("NpcLock", UDim2.new(0.82, 0, 0.27, 0), "NPCs")
+
+-- Crear pantalla principal
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 400, 0, 300)
+MainFrame.Position = UDim2.new(0.5, -200, 0.5, -150)
+MainFrame.BackgroundColor3 = Accents.TextColor
+MainFrame.BackgroundTransparency = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = MainGui
+
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
+local TitleLabel = Instance.new("TextLabel", MainFrame)
+TitleLabel.Size = UDim2.new(1, -20, 0, 30)
+TitleLabel.Position = UDim2.new(0, 10, 0, 5)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "Sacred Hub v9.7"
+TitleLabel.TextColor3 = Colors.Primary
+TitleLabel.Font = Enum.Font.GothamBlack
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+table.insert(UIElements, TitleLabel)
+
+-- Efecto de partículas en la UI
+local ParticleFrame = Instance.new("Frame", MainFrame)
+ParticleFrame.Size = UDim2.new(1, 0, 1, 0)
+ParticleFrame.BackgroundTransparency = 1
+ParticleFrame.ClipsDescendants = true
+
+local function SpawnParticle()
+if not MainFrame.Visible then return end
+local p = Instance.new("Frame", ParticleFrame)
+p.Size = UDim2.new(0, 2, 0, 2)
+p.Position = UDim2.new(0, math.random(0, 400), 1, math.random(-5, 5))
+p.BackgroundColor3 = Colors.Primary
+p.BorderSizePixel = 0
+table.insert(Toggles, p)
+local tween = TweenService:Create(p, TweenInfo.new(2, Enum.EasingStyle.Quad), {Position = UDim2.new(p.Position.X.Scale - 0.04, 0, -0.1, 0)})
+tween:Play()
+tween.Completed:Connect(function()
+local idx = table.find(Toggles, p)
+if idx then table.remove(Toggles, idx) end
+p:Destroy()
+end)
+end
+spawn(function() while true do wait(0.05) pcall(SpawnParticle) end end)
+
+-- Animación de apertura
+local function OpenGui()
+MainFrame.Visible = true
+TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+Size = UDim2.new(0, 400, 0, 300)
+}):Play()
+end
+
+-- Botón de Minimizar
+MinimizeBtn.Size = UDim2.new(0, 20, 0, 20)
+MinimizeBtn.Position = UDim2.new(1, -25, 0, 5)
+MinimizeBtn.BackgroundColor3 = Accents.TextColor
+MinimizeBtn.Text = "-"
+MinimizeBtn.TextColor3 = Colors.Primary
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.TextSize = 18
+MinimizeBtn.AutoButtonColor = false
+MinimizeBtn.Active = true
+MinimizeBtn.Selectable = true
+MinimizeBtn.Parent = MainGui
+Instance.new("UICorner", MinimizeBtn).CornerRadius = UDim.new(0, 4)
+table.insert(Clickables, MinimizeBtn)
+table.insert(UIElements, MinimizeBtn)
+MinimizeBtn.MouseButton1Click:Connect(function()
+MinimizeBtn.Visible = false
+OpenGui()
+end)
+
+-- Botón de Cerrar
+CloseBtn = Instance.new("TextButton", MainFrame)
+CloseBtn.Size = UDim2.new(0, 20, 0, 20)
+CloseBtn.Position = UDim2.new(1, -50, 0, 5)
+CloseBtn.BackgroundColor3 = Accents.TextColor
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Colors.Primary
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 14
+CloseBtn.AutoButtonColor = false
+CloseBtn.Active = true
+CloseBtn.Selectable = true
+CloseBtn.Parent = MainGui
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 4)
+table.insert(Clickables, CloseBtn)
+table.insert(UIElements, CloseBtn)
+CloseBtn.MouseButton1Click:Connect(function()
+CloseBtn.Visible = false
+OpenGui()
+end)
+
+-- Botones de acción de la ventana
+local ActionFrame = Instance.new("Frame", MainFrame)
+ActionFrame.Size = UDim2.new(0, 200, 0, 20)
+ActionFrame.Position = UDim2.new(0, 10, 0, 230)
+ActionFrame.BackgroundTransparency = 1
+
+local function CreateActionButton(text, y, color, callback)
+local btn = Instance.new("TextButton", ActionFrame)
+btn.Size = UDim2.new(0, 100, 0, 20)
+btn.Position = UDim2.new(0, 0, 0, y)
+btn.BackgroundColor3 = Accents.ButtonColor
+btn.TextColor3 = color
+btn.Font = Enum.Font.Gotham
+btn.TextSize = 12
+btn.Text = text
+btn.BackgroundTransparency = 0
+btn.AutoButtonColor = true
+btn.Active = true
+Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+btn.MouseButton1Click:Connect(callback)
+end
+
+CreateActionButton("Close", 0, Accents.ButtonColor, function()
+MainFrame.Visible = false
+MinimizeBtn.Visible = true
+end)
+CreateActionButton("Destroy UI", 20, Color3.fromRGB(255, 50, 50), function()
+MainGui:Destroy()
+ToggleFrame:Destroy()
+DropdownFrame:Destroy()
+SettingsFrame:Destroy()
+SliderFrame:Destroy()
+ButtonFrame:Destroy()
+MinimizeBtn:Destroy()
+CloseBtn:Destroy()
+ClearEsp()
+end)
+
+-- Crear Selector de Pestañas (Tabs)
+local TabFrame = Instance.new("Frame", MainFrame)
+TabFrame.Size = UDim2.new(0, 5, 0, 100)
+TabFrame.Position = UDim2.new(0, 5, 0, 40)
+TabFrame.BackgroundTransparency = 1
+
+local TabBtnLayout = Instance.new("UIListLayout", TabFrame)
+TabBtnLayout.Padding = UDim.new(0, 5)
+TabBtnLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+
+local function CreateTab(name, icon, h)
+local btn = Instance.new("TextButton", TabFrame)
+btn.Size = UDim2.new(0, 10, 0, 15)
+btn.BackgroundColor3 = name == "Combat" and Colors.Primary or Accents.ButtonColor
+btn.Text = icon
+btn.Font = Enum.Font.GothamBold
+btn.TextSize = 10
+btn.TextColor3 = Colors.Primary
+btn.AutoButtonColor = true
+btn.BorderSizePixel = 0
+btn.BackgroundTransparency = 0
+btn.Parent = TabFrame
+table.insert(Clickables, btn)
+return btn
+end
+
+local CombatTab = CreateTab("Combat", "C", true)
+local VisualTab = CreateTab("Visuals", "V", false)
+local MiscTab = CreateTab("Misc", "M", false)
+local PlayerTab = CreateTab("Players", "P", false)
+
+local SettingsBox = Instance.new("Frame", MainFrame)
+SettingsBox.Size = UDim2.new(0, 340, 0, 200)
+SettingsBox.Position = UDim2.new(0, 20, 0, 40)
+SettingsBox.BackgroundTransparency = 1
+SettingsBox.Visible = false
+
+local function CreateSection(title, y, parent)
+local sec = Instance.new("Frame", parent or SettingsBox)
+sec.Size = UDim2.new(0, 340, 0, 20)
+sec.Position = UDim2.new(0, 0, 0, y)
+sec.BackgroundTransparency = 1
+local lbl = Instance.new("TextLabel", sec)
+lbl.Size = UDim2.new(1, -10, 0, 20)
+lbl.BackgroundTransparency = 1
+lbl.Text = ">> "..title
+lbl.TextColor3 = Colors.Primary
+lbl.Font = Enum.Font.GothamBold
+lbl.TextXAlignment = Enum.TextXAlignment.Left
+lbl.TextSize = 13
+return sec
+end
+
+-- Función para crear Toggles
+local function CreateToggle(label, y, parent)
+local container = Instance.new("Frame", parent or SettingsBox)
+container.Size = UDim2.new(0, 340, 0, 15)
+container.Position = UDim2.new(0, 0, 0, y)
+container.BackgroundTransparency = 1
+
+local title = Instance.new("TextLabel", container)
+title.Size = UDim2.new(0.6, 0, 0, 15)
+title.BackgroundTransparency = 1
+title.Text = label
+title.TextColor3 = Accents.ButtonColor
+title.Font = Enum.Font.Gotham
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextSize = 12
+
+local toggleBtn = Instance.new("TextButton", container)
+toggleBtn.Size = UDim2.new(0, 15, 0, 15)
+toggleBtn.Position = UDim2.new(1, -15, 0, 0)
+toggleBtn.BackgroundColor3 = Accents.ToggleOff
+toggleBtn.Text = ""
+toggleBtn.AutoButtonColor = false
+Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 3)
+
+local state = false
+local function UpdateVisual()
+if state then
+toggleBtn.BackgroundColor3 = Colors.Primary
+toggleBtn.Text = "ON"
+if not table.find(Toggles, toggleBtn) then table.insert(Toggles, toggleBtn) end
+else
+toggleBtn.BackgroundColor3 = Accents.ToggleOff
+toggleBtn.Text = ""
+local idx = table.find(Toggles, toggleBtn)
+if idx then table.remove(Toggles, idx) end
+end
+end
+
+local function SetState(val)
+if state == val then return end
+state = val
+UpdateVisual()
+end
+
+toggleBtn.MouseButton1Click:Connect(function()
+state = not state
+UpdateVisual()
+end)
+
+return SetState, toggleBtn
+end
+
+-- Función para crear Sliders
+local function CreateSlider(label, y, default, min, max, callback, suffix)
+local container = Instance.new("Frame", SettingsBox)
+container.Size = UDim2.new(0, 340, 0, 30)
+container.Position = UDim2.new(0, 0, 0, y)
+container.BackgroundTransparency = 1
+
+local title = Instance.new("TextLabel", container)
+title.Size = UDim2.new(0.6, 0, 0, 15)
+title.BackgroundTransparency = 1
+title.Text = label
+title.TextColor3 = Accents.ButtonColor
+title.Font = Enum.Font.Gotham
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextSize = 12
+
+local valLabel = Instance.new("TextLabel", container)
+valLabel.Size = UDim2.new(0.4, 0, 0, 15)
+valLabel.Position = UDim2.new(0.6, 0, 0, 0)
+valLabel.BackgroundTransparency = 1
+valLabel.Text = tostring(default)..suffix
+valLabel.TextColor3 = Colors.Primary
+valLabel.Font = Enum.Font.GothamBold
+valLabel.TextSize = 12
+table.insert(Clickables, valLabel)
+
+local minusBtn = Instance.new("TextButton", container)
+minusBtn.Size = UDim2.new(0, 15, 0, 15)
+minusBtn.Position = UDim2.new(0, -15, 0, 15)
+minusBtn.Text = "-"
+minusBtn.TextColor3 = Accents.ButtonColor
+minusBtn.BackgroundTransparency = 1
+minusBtn.Font = Enum.Font.GothamBold
+minusBtn.TextSize = 14
+table.insert(Clickables, minusBtn)
+
+local plusBtn = Instance.new("TextButton", container)
+plusBtn.Size = UDim2.new(0, 15, 0, 15)
+plusBtn.Position = UDim2.new(1, 0, 0, 15)
+plusBtn.Text = "+"
+plusBtn.TextColor3 = Accents.ButtonColor
+plusBtn.BackgroundTransparency = 1
+plusBtn.Font = Enum.Font.GothamBold
+plusBtn.TextSize = 14
+table.insert(Clickables, plusBtn)
+
+minusBtn.MouseButton1Click:Connect(function()
+local val = math.clamp(default - 5, min, max)
+callback(val)
+valLabel.Text = tostring(val)..suffix
+end)
+
+plusBtn.MouseButton1Click:Connect(function()
+local val = math.clamp(default + 5, max, min)
+callback(val)
+valLabel.Text = tostring(val)..suffix
+end)
+
+return valLabel
+end
+
+-- Sección: COMBAT
+local CombatSec = CreateSection("Combat Settings", 0)
+CreateToggle("Silent Aim (Players)", 20, SettingsBox)
+local SetSilentPlayers, SilentPlayersToggle = CreateToggle("Lock Players", 40, SettingsBox)
+CreateToggle("Silent Aim (NPCs)", 60, SettingsBox)
+CreateToggle("Infinite Aura", 80, SettingsBox)
+CreateSlider("Aura Distance", 100, 16, 5, 100, function(val) WaitTime = val end, "studs")
+CreateSlider("Jump Power", 130, 20, 10, 100, function(val) JumpPower = val end, "power")
+local SetAutoStun, AutoStunToggle = CreateToggle("Auto Stun", 160, SettingsBox)
+local StunSlider = CreateSlider("Stun Value", 180, 1, 1, 100, function(val)
+PrevSoulGuitarValue = val
+end, "")
+
+-- Sección: VISUALS
+local VisualsSec = CreateSection("Visual Settings", 200)
+CreateToggle("Anti Lock / Anti Cheat", 220, SettingsBox)
+CreateToggle("No Clip", 240, SettingsBox)
+CreateToggle("ESP Wallhack", 260, SettingsBox)
+local SetFpsDrop, FpsDropToggle = CreateToggle("FPS Drop Lag", 280, SettingsBox)
+CreateSlider("Lag Duration", 300, 0.5, 0.1, 5, function(val) WaitTime = val end, "sec")
+
+-- Sección: MISCELLANEOUS
+local MiscSec = CreateSection("Misc Settings", 320)
+CreateToggle("Antidote Auto Use", 340, SettingsBox)
+local SetSoulGuitar, SoulGuitarToggle = CreateToggle("Soul Guitar Auto", 360, SettingsBox)
+CreateToggle("Load External Script", 380, SettingsBox)
+
+-- Sección: PLAYERS
+local PlayersSec = CreateSection("Player Targeting", 400)
+local SetPlayerSilent, PlayerSilentToggle = CreateToggle("Silent Aim Target", 420, SettingsBox)
+local SetNpcSilent, NpcSilentToggle = CreateToggle("NPC Silent Aim", 440, SettingsBox)
+CreateToggle("Show Player ESP", 460, SettingsBox)
+CreateToggle("Show NPC ESP", 480, SettingsBox)
+
+-- Lógica de los Toggles principales
+PlayerWidgetBtn.MouseButton1Click:Connect(function()
+if not SoulGuitarAutoEnabled then SetSilentPlayers(true) end
+InfiniteAuraEnabled = not InfiniteAuraEnabled
+UpdateWidgetColors()
+end)
+
+NpcWidgetBtn.MouseButton1Click:Connect(function()
+if not AntidoteAutoEnabled then SetNpcSilent(true) end
+FlyEnabled = not FlyEnabled
+UpdateWidgetColors()
+end)
+
+-- Lógica de Silent Aim
+SetSilentPlayers(function(state)
+SilentAimPlayers = state
+if not state then InfiniteAuraEnabled = false end
+end)
+
+SetNpcSilent(function(state)
+SilentAimNpcs = state
+if not state then FlyEnabled = false end
+end)
+
+-- Lógica de Aura
+local SetAura, AuraToggle = CreateToggle("Run Infinite Aura", 80)
+SetAura(function(state)
+InfiniteAuraEnabled = state
+if state then RunAura() end
+end)
+
+-- Lógica de Sanguine
+SetAutoStun(function(state)
+AntiLockEnabled = state
+SanguineAutoEnabled = state
+if state then
+SetupSanguineListener()
+else
+if AntidoteTask then AntidoteTask:Disconnect() AntidoteTask = nil end
+end
+UpdateWidgetColors()
+end)
+
+SanguineAutoWidget.MouseButton1Click:Connect(function()
+local newState = not SanguineAutoEnabled
+SanguineAutoEnabled = newState
+AutoStunToggle.BackgroundColor3 = newState and Colors.Primary or Accents.ToggleOff
+AutoStunToggle.Text = newState and "ON" or ""
+if newState then
+SetupSanguineListener()
+else
+if AntidoteTask then AntidoteTask:Disconnect() AntidoteTask = nil end
+end
+UpdateWidgetColors()
+end)
+
+-- Lógica de Soul Guitar
+SetSoulGuitar(function(state)
+SoulGuitarAutoEnabled = state
+IsStunLockDelay = state
+if PrevSoulGuitarValue ~= 1 then t = PrevSoulGuitarValue end
+PrevSoulGuitarValue = 121 -- Activado
+if not AntiLockEnabled then
+StunLockEnabled = false
+SetAutoStun(true)
+else
+StunLockEnabled = true
+end
+if StunSlider then StunSlider.Text = tostring(PrevSoulGuitarValue) end
+if AntiLockEnabled then ForceStunAttributes() end
+end)
+
+SoulGuitarWidget.MouseButton1Click:Connect(function()
+local newState = not SoulGuitarAutoEnabled
+SoulGuitarAutoEnabled = newState
+SoulGuitarToggle.BackgroundColor3 = newState and Colors.Primary or Accents.ToggleOff
+SoulGuitarToggle.Text = newState and "ON" or ""
+if PrevSoulGuitarValue ~= 1 then t = PrevSoulGuitarValue end
+PrevSoulGuitarValue = 121
+if not AntiLockEnabled then
+StunLockEnabled = false
+SetAutoStun(true)
+else
+StunLockEnabled = true
+end
+if StunSlider then StunSlider.Text = tostring(PrevSoulGuitarValue) end
+if AntiLockEnabled then ForceStunAttributes() end
+UpdateWidgetColors()
+end)
+
+-- Cargar Script Externo
+CreateToggle("Load Script", 380, SettingsBox):Connect(function(state)
+if state then
+pcall(function()
+AntidoteTask = task.spawn(function()
+(loadstring(game:HttpGet("URL_DE_EJEMPLO")))()
+end)
+end)
+else
+pcall(function()
+if AntidoteTask then task.cancel(AntidoteTask) AntidoteTask = nil end
+end)
+end
+end)
+
+-- Lógica del menú desplegable (Ejemplo simplificado)
+local DropdownMenu = Instance.new("Frame", MainFrame)
+DropdownMenu.Size = UDim2.new(0, 150, 0, 100)
+DropdownMenu.Position = UDim2.new(0.5, -75, 0.5, -50)
+DropdownMenu.BackgroundColor3 = Accents.TextColor
+DropdownMenu.Visible = false
+DropdownMenu.ZIndex = 10
+
+local function ShowDropdown()
+if DropdownMenu.Visible then return end
+DropdownMenu.Visible = true
+-- Añadir lógica de selección de jugadores aquí
+end
+
+-- Selección de Color (Temas)
+local ColorPickerFrame = Instance.new("Frame", MainFrame)
+ColorPickerFrame.Size = UDim2.new(0, 150, 0, 100)
+ColorPickerFrame.Position = UDim2.new(0, 200, 0, 250)
+ColorPickerFrame.BackgroundColor3 = Accents.TextColor
+ColorPickerFrame.Visible = false
+
+local ColorPickerBtn = Instance.new("TextButton", MainFrame)
+ColorPickerBtn.Size = UDim2.new(0, 100, 0, 20)
+ColorPickerBtn.Position = UDim2.new(0, 250, 0, 275)
+ColorPickerBtn.BackgroundColor3 = Accents.TextColor
+ColorPickerBtn.TextColor3 = Colors.Primary
+ColorPickerBtn.Text = "Theme: Default"
+ColorPickerBtn.Font = Enum.Font.GothamBold
+ColorPickerBtn.TextSize = 12
+table.insert(Clickables, ColorPickerBtn)
+table.insert(UIElements, ColorPickerBtn)
+
+local function UpdateTheme(colorName)
+Colors.Primary = Colors[colorName]
+ColorPickerBtn.Text = colorName.." Theme"
+for i, v in ipairs(UIElements) do
+if v and v:IsA("TextLabel") then v.TextColor3 = Colors.Primary end
+end
+for i, v in ipairs(Clickables) do
+if v and v:IsA("TextButton") then v.TextColor3 = Colors.Primary end
+end
+for i, v in ipairs(Toggles) do
+if v and v:IsA("TextLabel") then v.TextColor3 = Colors.Primary end
+end
+for i, v in ipairs(ParticleFrame:GetChildren()) do
+if v.ClassName == "Frame" then v.BackgroundColor3 = Colors.Primary end
+end
+for i, v in ipairs(ColorPickerFrame:GetChildren()) do
+if v:IsA("TextButton") and Colors[v.Name] then
+v.BackgroundColor3 = Colors[v.Name]
+end
+end
+ColorPickerFrame.Visible = false
+UpdateWidgetColors()
+end
+
+for name, color in pairs(Colors) do
+local btn = Instance.new("TextButton", ColorPickerFrame)
+btn.Size = UDim2.new(0, 20, 0, 20)
+btn.Position = UDim2.new(0, 0, 0, #ColorPickerFrame:GetChildren() * 25)
+btn.BackgroundColor3 = color
+btn.Text = name
+btn.Font = Enum.Font.GothamBold
+btn.TextSize = 8
+btn.TextColor3 = Color3.new(1,1,1)
+btn.MouseButton1Click:Connect(function() UpdateTheme(name) end)
+end
+
+ColorPickerBtn.MouseButton1Click:Connect(function()
+ColorPickerFrame.Visible = not ColorPickerFrame.Visible
+end)
+
+-- Ocultar UI si el jugador muere
+Humanoid.Died:Connect(function(hp, part)
+if not part and hp.Name == "Humanoid" then
+if MainFrame.Visible then
+MainFrame.Visible = false
+MinimizeBtn.Visible = true
+else
+MinimizeBtn.Visible = false
+OpenGui()
+end
+end
+end)
+
+UpdateWidgetColors()
+print("Sacred Hub Loaded Successfully")
